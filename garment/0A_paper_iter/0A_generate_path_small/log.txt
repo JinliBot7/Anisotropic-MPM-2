@@ -1,0 +1,6 @@
+[Taichi] version 1.4.1, llvm 15.0.4, commit e67c674e, linux, python 3.9.12
+[Taichi] Starting on arch=cuda
+5776 76 76 1
+8 8 64
+ok
+GLFW Error 65537: The GLFW library is not initialized

@@ -1,0 +1,2 @@
+Triangles 601796
+Vertices  1805388
