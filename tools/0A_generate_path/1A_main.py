@@ -51,8 +51,8 @@ pixel.place(grid_v, grid_m)
 # Object
 #center, dimension = ti.Vector([0.6, 0.5, 0.7]), ti.Vector([0.4, 0.4, 0.0005]) # dimension changes shape. if dimension[i] < e_radius, single layer
 #axis_angle = ti.Vector([-90 / 180 * pi, 1.0, 0.0, 0.0]) # angle and rotation axis
-center, dimension = ti.Vector([0.5, 0.51, 0.4]), ti.Vector([0.25, 0.25, 0.0005]) # dimension changes shape. if dimension[i] < e_radius, single layer
-axis_angle = ti.Vector([-180 / 180 * pi, 1.0, 0.0, 0.0]) # angle and rotation axis
+center, dimension = ti.Vector([0.5, 0.5, 0.5]), ti.Vector([0.25, 0.25, 0.0005]) # dimension changes shape. if dimension[i] < e_radius, single layer
+axis_angle = ti.Vector([-110 / 180 * pi, 1.0, 0.0, 0.0]) # angle and rotation axis
 #axis_angle = ti.Vector([-50 / 180 * pi, 1.0, 0.0, 0.0]) # angle and rotation axis
 
 e_radius, total_mass, pho = 0.0019, dimension[0] * dimension[1] * dimension[2], 2.0 # e_radius is the radius of the element. The distance between two elements is designed as 2 * e_radius.
@@ -260,13 +260,13 @@ def main():
                 window.destroy()
         # obj_0.energy[0] = 0.0
         
-        Reset()
+        # Reset()
 
-        Particle_To_Grid(obj_0, counter)
+        # Particle_To_Grid(obj_0, counter)
         
-        Grid_Operations(hanger)
+        # Grid_Operations(hanger)
         
-        Grid_To_Particle(obj_0)
+        # Grid_To_Particle(obj_0)
         
         #update_dt()
         if counter % 100 == 0: 
@@ -283,19 +283,19 @@ def main():
         #counter +=1
     
         #if counter > 2000 and (counter - 2000) % 100 == 0:
-        if counter % 100 == 0:
+        if counter == 0:
             target_point_np = obj_0.pio_x.to_numpy()
             np.save(f'target_path/target_{counter}.npy',target_point_np)
             
             path_np = obj_0.x.to_numpy()
             np.save(f'target_path/path_{counter}.npy',path_np)
             
-            energy_np = obj_0.energy.to_numpy()
-            np.save(f'target_path/deformation_energy_{counter}.npy',energy_np)
+            # energy_np = obj_0.energy.to_numpy()
+            # np.save(f'target_path/deformation_energy_{counter}.npy',energy_np)
             
-            compute_pio_hanger_vec(obj_0,hanger)
-            pio_hanger_vec_np = obj_0.pio_hanger_vec.to_numpy()
-            np.save(f'target_path/pio_hanger_vec_{counter}.npy',pio_hanger_vec_np)
+            # compute_pio_hanger_vec(obj_0,hanger)
+            # pio_hanger_vec_np = obj_0.pio_hanger_vec.to_numpy()
+            # np.save(f'target_path/pio_hanger_vec_{counter}.npy',pio_hanger_vec_np)
         
 
 @ti.kernel

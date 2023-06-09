@@ -257,9 +257,9 @@ def record_v_input(iteration: ti.i32, v_input:ti.template(), grad: ti.template()
 @ti.kernel
 def update_is_boundary(t: ti.i32, obj: ti.template()):
     for p in range(obj.n):
-        if obj.x[t,p][1] < 0.53 and obj.v[t,p][1] < 0.0:
+        if obj.x[t,p][1] < 0.55 and obj.v[t,p][1] < 0.0:
             dist = 0.53 - obj.x[t,p][1]
-            obj.is_boundary[t,p] = 0.1 * ti.pow(2,10 * dist) + 0.3
+            obj.is_boundary[t,p] = ti.pow(4,100 * dist) + 0.1
         else:
             obj.is_boundary[t,p] = 0.0
 

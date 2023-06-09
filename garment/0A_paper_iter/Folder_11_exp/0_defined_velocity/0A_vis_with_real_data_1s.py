@@ -9,16 +9,11 @@ Created on Fri Feb 24 21:47:35 2023
 import taichi as ti
 import numpy as np
 import os
-import sys
-
-
-sys.path.append('/home/luyin/Desktop/Anisotropic-MPM-1/garment/0A_paper_iter/Folder_7/module')
-
-from geometries import Obj, Hanger, Path
+from geometries import Obj, Hanger, Path, Path_Real
 from math import pi
 from compute_stress import compute_stress
-from render_video import set_render, render
-
+from render_diff import set_render, render
+import time
 
 
 #ti.init(debug=True)
@@ -28,17 +23,18 @@ scalar = lambda: ti.field(dtype=real)
 vec = lambda: ti.Vector.field(3, dtype=real)
 
 
-
-
 N_grid, dt = 128, 5e-5 # Grid number, substep time
 dx, inv_dx = 1 / N_grid, N_grid
-E, eta = 15e2, 0.3 # Young's modulus, Poisson's ratio
+E, eta = 8e2, 0.3 # Young's modulus, Poisson's ratio
 lam = E * eta / ((1 + eta) * (1 - 2 * eta)) # defined in https://encyclopediaofmath.org/wiki/Lam%C3%A9_constants
 mu = E / (2 * (1 + eta))
 damping = 0.0 # paper Eq. (2)
 
-max_step = 20000
+max_step = 40000
+max_move_step = 20000
 max_iter = 200
+
+
 
 grid_v_in = vec()
 grid_v_out = vec()
@@ -52,13 +48,18 @@ pixel.place(grid_v_in,grid_v_out, grid_m)
 v_input_num = 10
 v_input = vec()
 ti.root.dense(ti.l, v_input_num).place(v_input)
+v_input_ini_max = 0.01
 
-
-
+v_input_np = np.load('./data/v_input.npy')
+v_input_ti = ti.Vector.field(3, ti.f32, shape=(2000,100))
+v_input_ti.from_numpy(v_input_np)
+# v_input = vec()
+# ti.root.place(v_input)
 
 
 # initialize object
-center, dimension = ti.Vector([0.5, 0.5, 0.5]), ti.Vector([0.25, 0.25, 0.0005]) # dimension changes shape. if dimension[i] < e_radius, single layer
+
+center, dimension = ti.Vector([0.5, 0.8, 0.5]), ti.Vector([0.25, 0.25, 0.0005]) # dimension changes shape. if dimension[i] < e_radius, single layer
 axis_angle = ti.Vector([-91 / 180 * pi, 1.0, 0.0, 0.0]) # angle and rotation axis
 e_radius, total_mass, pho = 0.0019, dimension[0] * dimension[1] * dimension[2], 2.0 # e_radius is the radius of the element. The distance between two elements is designed as 2 * e_radius.
 color = (0.6,0.6,0.9)
@@ -67,23 +68,40 @@ obj = Obj(center, dimension, axis_angle, e_radius, total_mass, pho, color, max_s
 dim = 3
 neighbour = (3,) * dim
 
+pio_target = vec()
+ti.root.dense(ti.l, obj.pio_n).place(pio_target)
 
+loss_position = np.load('./data/loss_position.npy')
+target_iter_num = np.where(loss_position == np.amin(loss_position))[0]
+print(target_iter_num)
 
 pull_v = 2
+
+drag_coe = 0.00005
+
 @ti.kernel
 def Particle_To_Grid(t: ti.i32, obj:ti.template()):
     for p in range(obj.n):
         x_p = obj.x[t,p]
         v_p = obj.v[t,p]
-        if t < max_step:
+        if t < max_move_step:
             v_p += obj.grasp_flag[p] * (v_input[int(t / max_step * v_input_num)] - obj.v[t,p])
-            v_p[1] -= obj.grasp_flag[p] * obj.is_boundary[t,p] * v_p[1]
+        else:
+            v_p -= obj.grasp_flag[p] * obj.v[t,p]
+            #v_p[1] -= obj.grasp_flag[p] * obj.is_boundary[t,p] * v_p[1]
+        
+        # if p == 0:
+        #     print(x_p[1])
         # elif t < max_pull_step:
         #     error = ti.Vector([0.375, 0.58, 0.3]) - obj.x[t,0]
         #     v_p += obj.grasp_flag[p] * (ti.Vector([pull_v * error[0], pull_v * error[1], pull_v * error[2]])- obj.v[t,p]) 
 
         C_p = obj.C[t,p]
         F_p = obj.F[t,p]
+        
+        # current normal
+        normal  = ti.math.normalize(F_p @ ti.Vector([0.0, 0.0, 1.0]))
+        proj_v = v_p.dot(normal)
 
         #Deformation update
         F_p += dt * C_p @ F_p
@@ -115,13 +133,41 @@ def Particle_To_Grid(t: ti.i32, obj:ti.template()):
             grid_m[base + offset] += weight * obj.m  # mass conservation
             grid_v_in[base + offset] += weight * obj.m * v_p + weight * obj.m * C_p @ dpos # grid_v is acatually momentum, not velocity
             grid_v_in[base + offset] -= weight * 4 * dt * inv_dx * inv_dx * obj.vol * P @ dF_dC @ dpos
-            grid_v_in[base + offset].z += weight * dt * obj.m * -9.8  
+            grid_v_in[base + offset].z += weight * dt * obj.m * -2.8
+            grid_v_in[base + offset] -= drag_coe * weight * obj.m * proj_v * normal
+            
+# @ti.kernel
+# def Loss_Obj_Particle_To_Grid(obj: ti.template(), grid_m: ti.teplate()):
+#     for p in range(obj.n):
+#         x_p = obj.x[t,p]
+#         mass = 1.0 / obj.n
+#         for offset in ti.static(ti.grouped(ti.ndrange(*neighbour))):
+#             dpos = (offset - fx) * dx
+#             weight = 1.0
+#             for i in ti.static(range(dim)):
+#                 weight *= w[offset[i]][i]
+
+#             grid_m[base + offset] += weight * mass  # mass conservation
+
+# @ti.kernel
+# def Loss_real_data_Particle_To_Grid(obj: ti.template(), grid_m: ti.teplate()):
+#     for p in range(obj.n):
+#         x_p = obj.x[p]
+#         mass = 1.0 / obj.n
+#         for offset in ti.static(ti.grouped(ti.ndrange(*neighbour))):
+#             dpos = (offset - fx) * dx
+#             weight = 1.0
+#             for i in ti.static(range(dim)):
+#                 weight *= w[offset[i]][i]
+
+#             grid_m[base + offset] += weight * mass  # mass conservation
+            
 
 bound = 5
 @ti.kernel
 def Grid_Operations(boundary:ti.template()):
     for i, j, k in grid_v_in:
-        v_out = 0.9997 * grid_v_in[i, j, k]
+        v_out = 1.0 * grid_v_in[i, j, k]
         if i < bound and v_out.x < 0:
             v_out.x *= 0
             v_out.y *= 0.1
@@ -151,26 +197,30 @@ def Grid_Operations(boundary:ti.template()):
         
         grid_v_out[i, j, k] = v_out
         
+        # dist = ti.Vector([i * dx, j * dx, k * dx]) - Circle_Center[0]
+        # if dist.x ** 2 + dist.y ** 2 + dist.z ** 2 < Circle_Radius * Circle_Radius :
+        #     dist = dist.normalized()
+        #     grid_v[i, j, k] -= dist * ti.min(0, grid_v[i, j, k].dot(dist))
+        #     grid_v[i, j, k] *= 0.9  #friction
         
-    for p in boundary.sdf:
-        grid_index = boundary.sdf_index[p]
-        if grid_m[grid_index] != 0:
-            v_out = grid_v_in[grid_index]
-            v_proj = v_out.dot(boundary.sdf_n[p])            
-            if v_proj < 0:
-                v_normal = v_proj * boundary.sdf_n[p]
-                v_tangent = v_out - v_normal # no friciton now
-                v_out -= v_normal * ti.pow(3,-boundary.sdf[p])
-                #v_out -= v_tangent * 0.5
+    # for p in boundary.sdf:
+    #     grid_index = boundary.sdf_index[p]
+    #     if grid_m[grid_index] != 0:
+    #         v_out = grid_v_in[grid_index]
+    #         v_proj = v_out.dot(boundary.sdf_n[p])            
+    #         if v_proj < 0:
+    #             v_normal = v_proj * boundary.sdf_n[p]
+    #             v_tangent = v_out - v_normal # no friciton now
+    #             v_out -= v_normal * ti.pow(3,-boundary.sdf[p])
+    #             #v_out -= v_tangent * 0.5
                 
-                grid_v_out[grid_index] = v_out
+    #             grid_v_out[grid_index] = v_out
 
 @ti.kernel
 def Grid_To_Particle(t: ti.i32, obj:ti.template()):
     for p in range(obj.n):
         x_p = obj.x[t,p]
-        if p == 0:
-            print(x_p[1])
+        
         base = (x_p * inv_dx - 0.5).cast(int)
 
         fx = x_p * inv_dx - base.cast(float)
@@ -210,7 +260,7 @@ def Reset():
 
 def substep(counter, obj_0, hanger):
     Reset()
-    update_is_boundary(counter,obj_0)
+    #update_is_boundary(counter,obj_0)
     Particle_To_Grid(counter, obj_0)
     Grid_Operations(hanger)
     Grid_To_Particle(counter, obj_0)
@@ -218,66 +268,75 @@ def substep(counter, obj_0, hanger):
 @ti.kernel
 def ini_v_input(obj:ti.template(), iter_num: ti.i32, v_input_ti: ti.template()):
     for i in range(10):
-        v_input[i] = v_input_ti[iter_num,i]
+        v_input[i] = ti.Vector([0.0, -0.2, 0.0])
 
-        
-@ti.kernel
-def update_is_boundary(t: ti.i32, obj: ti.template()):
-    for p in range(obj.n):
-        if obj.x[t,p][1] < 0.53 and obj.v[t,p][1] < 0.0:
-            dist = ((0.53 - obj.x[t,p][1]) ** 2) ** 0.5
-            obj.is_boundary[t,p] = ti.pow(2,100 * dist)
-        else:
-            obj.is_boundary[t,p] = 0.0
+# @ti.kernel
+# def compute_loss(obj:ti.template(), path_real:ti.template()):
+    
+
+    
+
 
 def main():
-    hanger = Hanger('../../asset/Hanger',[0.5, 0.5, 0.5], (0.4, 0.4, 0.4))
+    real_start_index = 36
+    # aruco_0 exp_num 0: 60 exp_num 1: 36
+    exp_name = 'aruco_0'
+    exp_num = 1
+    
+    target_num = 0
+    pio_target_np = np.load(f'./target_path/target_{target_num}.npy')
+
+
+    time_list = np.load(f'0A_real_path/{exp_name}/{exp_num}/time.npy')
+    pio_target.from_numpy(pio_target_np)
+    
     obj.initialize()
-    path = Path('../../asset/target_path/', 0, (0.8,0.5,0.5), obj.n, obj.pio_n, obj.nx)
-    path.initialize()
+    hanger = Hanger('./Hanger',[0.5, 0.5, 0.5], (0.4, 0.4, 0.4))
+    #path = Path('./target_path', target_num, (0.8,0.5,0.5), obj.n, obj.pio_n, obj.nx)
+    #path.initialize()
     
-
+    #path_real = 
+    
     camera, scene, canvas, window, axisX, axisY, axisZ, colorX, colorY, colorZ = set_render()
-    
-    trial_num = 0
-    loss = np.load(f'../trials/trial_{trial_num}/loss.npy')
-    target_iter_num = np.where(loss == np.amin(loss))[0]
-    #print(target_iter_num)
-    v_input_np = np.load(f'../trials/trial_{trial_num}/v_input.npy')
-    v_input_ti = ti.Vector.field(3, ti.f32, shape=(200,10))
-    v_input_ti.from_numpy(v_input_np)
-    obj_center_np = np.load(f'../trials/trial_{trial_num}/obj_center.npy')
-    obj_center = ti.Vector([0.5, obj_center_np[1], obj_center_np[2]])
-    target_num = np.load(f'../trials/trial_{trial_num}/target_num.npy')[0]
-    obj.initialize_center(obj_center)
-    path.initialize_new('../../asset/target_path/', target_num)
 
-    
     iter_num = 0
     
     
-    #decay_rate = 0.1
+    path_real = Path_Real(exp_name,exp_num,real_start_index)
+    current_real_time = 0.0
+    current_relative_frame = 0
     while iter_num < max_iter:
         ini_v_input(obj, iter_num, v_input_ti)
-        
-      
-        #if iter_num % 20 == 0:
-        if iter_num >= 34:
+
+        if iter_num == target_iter_num:
             print(iter_num)
         
+            try:
+                os.mkdir(f'./vis/{iter_num}')
+            except FileExistsError:
+                pass
+                print('fiel alrady exist!')
             
-            #video_manager = ti.tools.VideoManager('../0A_videos',video_filename=f'trial_{trial_num}_{iter_num}',framerate = 50, automatic_build=False)
+            video_manager = ti.tools.VideoManager(f'./vis/{iter_num }',framerate = 50, automatic_build=False)
             
             for t in range(max_step - 1):
+                next_real_time = time_list[current_relative_frame + real_start_index + 1] - time_list[real_start_index]
+                if t / max_move_step > next_real_time:
+                    path_real.update(exp_name,exp_num,real_start_index + current_relative_frame + 1)
+                    print(next_real_time,real_start_index + current_relative_frame + 1)
+                    current_relative_frame += 1
                 substep(t, obj, hanger)
                 
                 if t % 100 == 0: 
-                    render(t,[obj], [hanger], [path], camera, scene, canvas, window, axisX, axisY, axisZ, colorX, colorY, colorZ)
+                    render(t,[obj], [], [path_real], camera, scene, canvas, window, axisX, axisY, axisZ, colorX, colorY, colorZ)
                     window.show()
-                    
+                    #print(t * dt)
             #         img = window.get_image_buffer_as_numpy()
             #         video_manager.write_frame(img)
             # video_manager.make_video(gif=False, mp4=True)   
+            
+
+        
         
         iter_num += 1
         
