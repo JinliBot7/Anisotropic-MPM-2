@@ -11,7 +11,7 @@ drag_list = []
 lift_list = []
 loss_list = []
 
-for trial_num in range(1718):
+for trial_num in range(2300):
 
     A_drag = np.load(f'../trials/trial_{trial_num}/drag_coe_np.npy')
     A_lift = np.load(f'../trials/trial_{trial_num}/lift_coe.npy')
@@ -21,6 +21,8 @@ for trial_num in range(1718):
     loss_list.append(A_loss)
 
 loss_np = np.array(loss_list)
+index = np.where(loss_np == np.amin(loss_np))[0][0]
+print(np.amin(loss_np),drag_list[index], lift_list[index])
 # v_input_np = np.load(f'../trials/trial_{trial_num}/v_input.npy')
 # print(v_input_np[1])
 # v_input_ti = ti.Vector.field(3, ti.f32, shape=(200,10))

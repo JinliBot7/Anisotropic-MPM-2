@@ -16,7 +16,8 @@ def set_render():
     camera = ti.ui.Camera()
     
     scale = 1.0
-    camera.position(1.0*scale, 0.6*scale, 0.6*scale)
+    camera.position(1.0*scale, 0.3*scale, 0.6*scale)
+    #camera.position(1.2*scale, 0.1*scale, 0.5*scale)
     camera.lookat(0.5, 0.6, 0.45)
     
     # scale = 1.2
@@ -62,7 +63,7 @@ def render(counter, obj_list, manipulator_list, path_list, camera, scene, canvas
     #     #scene.particles(manipulator_list[i].x, radius = manipulator_list[i].e_radius * 1, color = manipulator_list[i].color)
     #     #scene.particles(manipulator_list[i].collision_box, radius = manipulator_list[i].e_radius * 0.3, color = (0.8, 0.2, 0.2))
     for i in range(len(path_list)):
-        scene.particles(path_list[i].x, radius = obj_list[0].e_radius * 0.2, per_vertex_color = path_list[i].colors)
+        scene.particles(path_list[i].x, radius = obj_list[0].e_radius * 0.3, per_vertex_color = path_list[i].colors)
 
     #scene.particles(ball_center, radius = ball_radius * 0.9, color = (0.3, 0.3, 0.3))
     for i in range(196):
